@@ -10,8 +10,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
 @RestController
@@ -34,29 +34,20 @@ public class ReminderController {
                         .body("Brak aukcji do powiadomienia.");
             }
 
-            LocalDateTime now = LocalDateTime.now();
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+            OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+            auctions.forEach(auction -> {
+                try {
+                    OffsetDateTime endTime = OffsetDateTime.parse(auction.getEndTime());
+                    // Jeśli aukcja kończy się przed "now + minutesBeforeEnd", wyślij powiadomienie
+                    if (endTime.isBefore(now.plusMinutes(minutesBeforeEnd))) {
+                        notificationService.sendAuctionReminder(email, auction);
+                    }
+                } catch (Exception e) {
+                    System.out.println("Błąd parsowania daty dla aukcji: " + auction.getId() + ", szczegóły: " + e.getMessage());
+                }
+            });
 
-            auctions.stream()
-                    .filter(auction -> {
-                        try {
-                            LocalDateTime endTime = LocalDateTime.parse(auction.getEndTime(), formatter);
-                            return endTime.isBefore(now.plusMinutes(minutesBeforeEnd));
-                        } catch (Exception e) {
-                            System.out.println("Błąd parsowania daty dla aukcji: " + auction.getId() + ", szczegóły: " + e.getMessage());
-                            return false;
-                        }
-                    })
-                    .forEach(auction -> {
-                        try {
-                            notificationService.sendAuctionReminder(email, auction);
-                        } catch (Exception e) {
-                            System.out.println("Błąd wysyłania powiadomienia dla aukcji: " + auction.getId() + ", szczegóły: " + e.getMessage());
-                        }
-                    });
-
-            return ResponseEntity.status(HttpStatus.OK)
-                    .body("Powiadomienia wysłane na " + email);
+            return ResponseEntity.ok("Powiadomienia wysłane na " + email);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Wystąpił błąd: " + e.getMessage());
